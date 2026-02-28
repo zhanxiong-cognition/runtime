@@ -1,0 +1,85 @@
+setup:
+  - name: Update apt package lists
+    run: sudo apt-get update -y
+
+  - name: Install build dependencies (Ubuntu/Debian)
+    run: >-
+      sudo apt install -y cmake llvm lld clang build-essential
+      python-is-python3 curl git lldb libicu-dev liblttng-ust-dev
+      libssl-dev libkrb5-dev ninja-build pigz cpio
+
+  - name: Upgrade cmake to >= 3.26 via Kitware APT (Ubuntu 22.04)
+    run: >-
+      wget -qO- https://apt.kitware.com/keys/kitware-archive-latest.asc
+      | sudo tee /usr/share/keyrings/kitware-archive-keyring.asc > /dev/null
+      && echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.asc] https://apt.kitware.com/ubuntu/ jammy main"
+      | sudo tee /etc/apt/sources.list.d/kitware.list > /dev/null
+      && sudo apt-get update
+      && sudo apt-get install -y cmake
+
+  - name: Build CLR (Release) and Libraries (Debug)
+    run: ./build.sh -subset clr+libs -rc Release
+
+maintenance:
+  - name: Rebuild CLR and Libraries after pulling new changes
+    run: ./build.sh -subset clr+libs -rc Release
+
+  - name: Run a single library's tests (example with System.Collections)
+    run: dotnet build /t:Test
+    env:
+      WORKING_DIR: src/libraries/System.Collections/tests
+
+knowledge:
+  - name: Build system overview
+    contents: >-
+      This is the dotnet/runtime repository (.NET Runtime, Libraries, and Host).
+      The build system uses MSBuild orchestrated by the root build.sh (Linux/macOS)
+      or build.cmd (Windows) script, which delegates to eng/build.sh. Native
+      components (CoreCLR JIT, GC, native shims) are built with CMake + Clang + Ninja.
+      Managed code is built with the .NET SDK (bootstrapped via the repo's own
+      dotnet.sh wrapper which downloads the correct SDK version from global.json).
+
+  - name: SDK version
+    contents: >-
+      The required .NET SDK version is defined in global.json at the repo root.
+      As of this setup it targets .NET 11.0 Preview
+      (SDK 11.0.100-preview.1.26104.118). The build.sh script automatically
+      downloads the correct SDK; you do not need to install it manually.
+
+  - name: CMake version requirement
+    contents: >-
+      CMake >= 3.26 is required. Ubuntu 22.04 ships CMake 3.22 which is too old.
+      Use the Kitware APT repository or snap to get a newer version.
+
+  - name: Build subsets
+    contents: >-
+      The repo is divided into subsets: clr (CoreCLR runtime + CoreLib),
+      libs (managed libraries), mono (Mono runtime), host (dotnet host), and
+      packs (installers). You can combine subsets with + (e.g. clr+libs).
+      For library development, the recommended workflow is to build CLR in
+      Release and libs in Debug: ./build.sh -subset clr+libs -rc Release
+
+  - name: Running library tests
+    contents: >-
+      After building clr+libs, you can run individual library test suites by
+      navigating to src/libraries/<LibraryName>/tests and running
+      "dotnet build /t:Test" (or use the repo's ./dotnet.sh wrapper if the
+      system SDK is not compatible). Running all tests at once is done via
+      "./build.sh -subset libs.tests -test" but takes a very long time.
+
+  - name: Build output location
+    contents: >-
+      Build artifacts are placed under the artifacts/ directory at the repo root.
+      Key paths include artifacts/bin/coreclr/linux.x64.Release/ for CLR binaries
+      and artifacts/bin/testhost/ for the test host used to run library tests.
+
+  - name: Build time and disk space
+    contents: >-
+      A full clr+libs build takes approximately 10 minutes on a modern machine
+      and consumes 10-20 GB of disk space. The repo clone itself is ~1-1.5 GB.
+
+  - name: Warnings as errors
+    contents: >-
+      The build treats warnings as errors by default. To disable this during
+      development, set the environment variable TreatWarningsAsErrors=false
+      before building.
